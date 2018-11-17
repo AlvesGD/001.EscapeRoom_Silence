@@ -18,50 +18,48 @@ public enum ENUM_Object
     climbable, draggable, NB_ENTRIES
 }
 
+[RequireComponent(typeof(AudioPlayer))]
 public class Player_Proto_001 : MonoBehaviour
 {
-    //Constants
+        //CONSTS
     //private const float JUMP_NOISEIMPACT_DURATION
+    public const int NB_AUDIO_SOURCES = 7;
+    public const int NB_FTSTEP_CLIPS = 4;
 
-    //References
+        //REFERENCES
     //[SerializeField] private GM_Manager m_gmRef;
+            //HUD
     [SerializeField] private Image mImg_noiseLevelBar;
     [SerializeField] private Transform m_hintParentRef;
     [SerializeField] private Transform m_noiseLvlBcgRef;
+            //SCRIPTS
     private PLAY_LookAround m_lookAroundRef;    //Look around scripts references
     [SerializeField] private PLAY_LookAround m_camLookAroundRef;
-    private List<ACT_Draggable_Proto_001> m_draggableObjects;
-    private ACT_Draggable_Proto_001 m_draggedObject;
-    private List<ACT_Climbable_Proto_001> m_climbableObjects;
-    private ACT_Climbable_Proto_001 m_climbedObject;
+            //OBJECTS
     private Transform m_aimedObject;
-    private AudioSource m_audioActionRef;
-    //Properties
+    private Draggable m_draggedObject;
+    private Climbable m_climbedObject;
+            //AUDIO
+    private List<AudioSource> mAudio_refs;
+    private AudioPlayer m_audioPlayerRef;
+        //PROPERTIES
     //Convert these SerializeFields to constants
     [SerializeField] private float m_spawnDelay;
     [SerializeField] private float m_speed;
     [SerializeField] private float m_spdNoiseImpact;
-    /*
-    [SerializeField] private float m_jumpForce;
-    [SerializeField] private float m_jumpNoiseImpact;
-    [SerializeField] private float m_jmpNoiseImpDuration;
-    [SerializeField] private float m_timeToLand;
-    [SerializeField] private float m_landNoiseImpact;
-    */
-    [SerializeField] private AudioClip[] m_audioSamples = new AudioClip[(int)ENUM_PlayerActions.NB_ENTRIES];
+    [SerializeField] private AudioClip[] m_audioSamples = new AudioClip[NB_AUDIO_SOURCES];
     private List<GameObject> m_overlappedActors;
 
     private Vector3 m_spawnPosition;
     private Quaternion m_spawnRotation;
 
-    //Triggers
+        //TRIGGERS
     //private bool mB_jumpTrig;
     private bool mB_deathTrig;
 
     //private bool mB_isGrounded;
     private ENUM_PlayerStates m_playerState;
     private Vector3 m_playerStartClimbingPos;
-    private float mFlt_climbPercent;
     private bool mB_blocked;
     private float mFlt_landCooling;
     private float m_noiseLevel;
@@ -80,11 +78,18 @@ public class Player_Proto_001 : MonoBehaviour
 
     private void Initialization()
     {
+        for(int i = 0 ; i < NB_AUDIO_SOURCES ; i++)
+        {
+            AudioSource temp = this.gameObject.AddComponent<AudioSource>();
+            temp.spatialBlend = 0.8f;
+            temp.minDistance = 0.001f;
+            temp.maxDistance = 0.01f;
+        }
+        mAudio_refs = new List<AudioSource>(this.GetComponents<AudioSource>());
         m_overlappedActors = new List<GameObject>();
-        m_audioActionRef = this.GetComponent<AudioSource>();
         m_lookAroundRef = this.GetComponent<PLAY_LookAround>();
-        m_climbableObjects = new List<ACT_Climbable_Proto_001>();
-        m_draggableObjects = new List<ACT_Draggable_Proto_001>();
+        m_audioPlayerRef = this.GetComponent<AudioPlayer>();
+
         m_draggedObject = null;
         m_climbedObject = null;
         m_aimedObject = null;
@@ -105,6 +110,7 @@ public class Player_Proto_001 : MonoBehaviour
     // Update is called once per frame
     void Update ()
     {
+        //Camera.main.transform.localEulerAngles = new Vector3( Mathf.Clamp( Camera.main.transform.localEulerAngles.x, 60, 360), 0, 0);
         AimingRay();
         Action();
         Movement();
@@ -124,35 +130,51 @@ public class Player_Proto_001 : MonoBehaviour
         {
             if (Physics.Raycast(m_camLookAroundRef.transform.position, m_camLookAroundRef.transform.forward * 3000, out hit, Mathf.Infinity, layerMask))
             {
-                //Debug.DrawRay(m_camLookAroundRef.transform.position, m_camLookAroundRef.transform.forward * hit.distance, Color.yellow);
-                    //If the collider is a draggable object and already included in the overlapping objects list
-                    /*/
-                    if (hit.collider.GetComponent<ACT_Draggable_Proto_001>() != null &&  m_draggableObjects.Contains(hit.collider.GetComponent<ACT_Draggable_Proto_001>()))
-                    {
-                        m_aimedObject = hit.collider.transform;//Referencing the transform of the object if it is contained by the overlapping objects list
-                        m_hintParentRef.gameObject.SetActive(true);
-                        m_hintParentRef.GetChild(0).GetChild(0).gameObject.SetActive(true);
-                    }else
-                    {
-                        m_hintParentRef.GetChild(0).GetChild(0).gameObject.SetActive(false);
-                    }
-                    if(hit.collider.GetComponent<ACT_Climbable_Proto_001>() != null &&  m_climbableObjects.Contains(hit.collider.GetComponent<ACT_Climbable_Proto_001>()))
-                    {
-                        m_aimedObject = hit.collider.transform;
-                        m_hintParentRef.gameObject.SetActive(true);
-                        m_hintParentRef.GetChild(0).GetChild(1).gameObject.SetActive(true);
-                        //Otherwise it is set to invisible
-                    }else
-                    {
-                        m_hintParentRef.GetChild(0).GetChild(1).gameObject.SetActive(false);
-                    }
-                    */
                     m_aimedObject = hit.collider.gameObject.transform;
-                    //DEGUEULASSE
+                    if(ObjectOverlapped(m_aimedObject.gameObject))
+                    {
+                        if(FirstObjInOverlapped(ENUM_Object.climbable))
+                        {
+                            m_climbedObject = m_aimedObject.GetComponent<Climbable>();
+                            m_hintParentRef.gameObject.SetActive(true);
+                            if(!m_hintParentRef.GetChild(0).GetChild(1).gameObject.activeInHierarchy)
+                                m_hintParentRef.GetChild(0).GetChild(1).gameObject.SetActive(true);
+                        }else
+                        {
+                            Debug.Log("Not climbable");
+                            m_hintParentRef.gameObject.SetActive(false);
+                            if(m_hintParentRef.GetChild(0).GetChild(1).gameObject.activeInHierarchy)
+                                m_hintParentRef.GetChild(0).GetChild(1).gameObject.SetActive(false);
+                            m_climbedObject = null;
+                        }
+                        if(FirstObjInOverlapped(ENUM_Object.draggable))
+                        {
+                            m_hintParentRef.gameObject.SetActive(true);
+                            m_draggedObject = m_aimedObject.GetComponent<Draggable>();
+                            if(!m_hintParentRef.GetChild(0).GetChild(0).gameObject.activeInHierarchy)
+                                m_hintParentRef.GetChild(0).GetChild(0).gameObject.SetActive(true);
+
+                        }else
+                        {
+                            Debug.Log("Not climbable");
+                            m_hintParentRef.gameObject.SetActive(false);
+                            if(m_hintParentRef.GetChild(0).GetChild(0).gameObject.activeInHierarchy)
+                                m_hintParentRef.GetChild(0).GetChild(0).gameObject.SetActive(false);
+                            m_draggedObject = null;
+                        }
+                    }else
+                    {
+                        if(!m_hintParentRef.GetChild(0).GetChild(1).gameObject.activeInHierarchy)
+                            m_hintParentRef.GetChild(0).GetChild(1).gameObject.SetActive(false);
+                        if(!m_hintParentRef.GetChild(0).GetChild(0).gameObject.activeInHierarchy)
+                            m_hintParentRef.GetChild(0).GetChild(0).gameObject.SetActive(false);
+                        m_hintParentRef.gameObject.SetActive(false);
+                        m_climbedObject = null;
+                        m_draggedObject = null;
+                    }
             }else
             {
                 m_aimedObject = null;
-                //Debug.DrawRay(m_camLookAroundRef.transform.position, m_camLookAroundRef.transform.forward * 3000, Color.white);
             }
         }
     }
@@ -180,20 +202,12 @@ public class Player_Proto_001 : MonoBehaviour
 
     private void Action()
     {
-
         if(Input.GetAxis("Gamepad_Trigger") < 0f)//Player pressing right trigger
         {
-            if(m_aimedObject != null)//If the player is aiming at a draggable object
-            {
-                if(m_aimedObject.GetComponent<ACT_Draggable_Proto_001>() != null)
-                {
-                    m_draggedObject = m_aimedObject.GetComponent<ACT_Draggable_Proto_001>();
-                }
-            }
             if (m_draggedObject != null && m_playerState == ENUM_PlayerStates.none)
             {
                 m_playerState = ENUM_PlayerStates.interacting;
-                m_draggedObject.Drag(this.GetComponent<Player_Proto_001>());//Drags the object
+                m_draggedObject.Interact(this.GetComponent<Player_Proto_001>());//Drags the object
                 if(m_lookAroundRef != null && m_camLookAroundRef != null) //Blocks the looking axis rotations
                 {
                     m_lookAroundRef.BlockAxis(PLAY_LookAround.ENUM_RotationAxis.Y);
@@ -202,58 +216,44 @@ public class Player_Proto_001 : MonoBehaviour
             }
         }else//Player not pressing the right trigger
         {
-            if(Input.GetAxis("Gamepad_Trigger") > 0f)//Player pressing the left trigger
+            if(Input.GetAxis("Gamepad_Trigger") > 0f)//Player pressing right trigger
             {
-                if(m_aimedObject != null)
-                {
-                    if(m_aimedObject.GetComponent<ACT_Climbable_Proto_001>() != null)//If the player is aiming at a climbable object
-                    {
-                        m_climbedObject = m_aimedObject.GetComponent<ACT_Climbable_Proto_001>();
-                    }
-                }
                 if(m_climbedObject != null)
                 {
-                    if (m_playerState == ENUM_PlayerStates.none && !m_climbedObject.IsClimbed())
+                    if (m_playerState == ENUM_PlayerStates.none)
                     {
                         m_playerState = ENUM_PlayerStates.climbing;
                         mB_blocked = true;
                         
                         this.GetComponent<Rigidbody>().useGravity = false;
                         m_playerStartClimbingPos = this.transform.position;
-                        mFlt_climbPercent = m_climbedObject.GetTotalClimbDuration();
                     }
                     if(this.transform.position.y > m_climbedObject.transform.GetChild(0).position.y + this.GetComponent<CapsuleCollider>().height / 2)//Player has climbed the object
                     {
                         m_playerState = ENUM_PlayerStates.none;
                         mB_blocked = false;
                         this.GetComponent<Rigidbody>().useGravity = true;
-                        if(m_climbedObject != null)
-                            m_climbedObject.SetIsClimbed(true);
                         m_climbedObject = null;
-                    }//IF the object has not just been already climbed, it avoids to chain the climbs between different climbable objects
-                    else if(m_climbedObject != null && !m_climbedObject.IsClimbed())
+                    }else//IF the object has not just been already climbed, it avoids to chain the climbs between different climbable objects
                     {
                         float input = Input.GetAxis("Gamepad_Trigger");
-                        float speed = Vector3.Distance(m_playerStartClimbingPos, m_climbedObject.transform.GetChild(0).position) / m_climbedObject.GetTotalClimbDuration();
+                        float speed = Vector3.Distance(m_playerStartClimbingPos, m_climbedObject.transform.GetChild(0).position) / m_climbedObject.GetClimbDuration();
                     
                         this.transform.position += new Vector3(0, input*speed, 0);
                     }
                 }
                 //If he is currently overlapping climbable object and not already performing an action
-                
             }else if(m_playerState == ENUM_PlayerStates.climbing)
             {
                 m_playerState = ENUM_PlayerStates.none;
                 mB_blocked = false;
                 this.transform.position = m_playerStartClimbingPos;
                 this.GetComponent<Rigidbody>().useGravity = true;
-                m_climbedObject.SetIsClimbed(false);
             }
-
             if (m_playerState == ENUM_PlayerStates.interacting)//Already dragging an object
             {
                 m_playerState = ENUM_PlayerStates.none;
-                m_draggedObject.Drop(this);//Drops the object
+                m_draggedObject.Release(this);//Drops the object
                 if (m_lookAroundRef != null && m_camLookAroundRef != null)//Frees looking axis rotations
                 {
                     m_lookAroundRef.FreeAxis(PLAY_LookAround.ENUM_RotationAxis.Y);
@@ -279,32 +279,13 @@ public class Player_Proto_001 : MonoBehaviour
         if(!mB_blocked)
         {
             if (m_currentSpeed > 0.0f /*&& mB_isGrounded*/)
+            {
                 m_noiseLevel = m_currentSpeed * (m_spdNoiseImpact + ((m_playerState == ENUM_PlayerStates.interacting) ? m_draggedObject.GetNoiseImpact() : 0.0f));
+                
+            }
             else
                 m_noiseLevel = 0.0f;
-            /*
-            if (mFlt_jumpCooling > 0.0f && !mB_isGrounded)
-            {
-                //Plays jump sounds here
-                if (!m_audioActionRef.isPlaying && !mB_jumpTrig)
-                {
-                    mB_jumpTrig = true;
-                    m_audioActionRef.clip = m_audioSamples[(int)ENUM_PlayerActions.jump];
-                    m_audioActionRef.Play();
-                }
-                //Instantly disable the jump trigger boolean
-                mFlt_jumpCooling -= Time.deltaTime;
-                m_noiseLevel += m_jumpNoiseImpact;
-            }
-            */
-        }/*else if(mFlt_landCooling > 0.0f)
-        {
-            mFlt_landCooling -= Time.deltaTime;
-            m_noiseLevel = m_landNoiseImpact;
-        }else
-        {
-            mB_blocked = false;
-        }*/
+        }
         //Keeps m_noiseLevel between 0 and 1
         m_noiseLevel = Mathf.Clamp(m_noiseLevel, 0.0f, 1.0f);
         /*
@@ -314,11 +295,9 @@ public class Player_Proto_001 : MonoBehaviour
             m_gmRef.Restart();
         }
         */
-
-        if (m_playerState == ENUM_PlayerStates.interacting)
+        switch(m_playerState)
         {
-            if(m_draggedObject != null)
-            {
+            case ENUM_PlayerStates.interacting:
                 if (m_currentSpeed > 0.0f)
                 {
                     m_draggedObject.GetComponent<AudioSource>().volume = m_noiseLevel;
@@ -349,17 +328,9 @@ public class Player_Proto_001 : MonoBehaviour
                     }
 
                 }
-
-            }
-        }else
-        {
-            if(m_playerState == ENUM_PlayerStates.climbing)
-            {
-                if(m_climbedObject != null)
-                {
-                    m_noiseLevel = Input.GetAxis("Gamepad_Trigger") * m_climbedObject.GetNoiseImpact();
-                }
-            }
+            break;
+            case ENUM_PlayerStates.climbing:
+            m_noiseLevel = Input.GetAxis("Gamepad_Trigger") * m_climbedObject.GetNoiseImpact();
             if (m_draggedObject != null)
             {
                 if (m_draggedObject.GetComponent<AudioSource>().isPlaying)
@@ -371,14 +342,12 @@ public class Player_Proto_001 : MonoBehaviour
                     m_draggedObject.GetComponents<AudioSource>()[1].Stop();
                 }
             }
+            break;
         }
         if (mImg_noiseLevelBar != null && m_noiseLvlBcgRef != null)
         {
             mImg_noiseLevelBar.fillAmount = m_noiseLevel;
             mImg_noiseLevelBar.color = new Color(1f, 1 - m_noiseLevel, 1 - m_noiseLevel, 0.8f);
-            /*
-            m_noiseLvlBcgRef.GetComponent<Image>().color = new Color(m_noiseLevel, 0f, 0f);
-            */
         }
     }
 
@@ -401,14 +370,14 @@ public class Player_Proto_001 : MonoBehaviour
             case ENUM_Object.climbable:
                 for(i = 0 ; i < m_overlappedActors.Count ; i++)
                 {
-                    if(m_overlappedActors[i].GetComponent<ACT_Climbable_Proto_001>() != null)
+                    if(m_overlappedActors[i].GetComponent<Climbable>() != null)
                         return m_overlappedActors[i].transform;
                 }
                 break;
             case ENUM_Object.draggable:
                 for(i = 0 ; i < m_overlappedActors.Count ; i++)
                 {
-                    if(m_overlappedActors[i].GetComponent<ACT_Draggable_Proto_001>() != null)
+                    if(m_overlappedActors[i].GetComponent<Draggable>() != null)
                         return m_overlappedActors[i].transform;
                 }
                 break;
@@ -425,7 +394,19 @@ public class Player_Proto_001 : MonoBehaviour
 
     private void OnTriggerExit(Collider other)
     {
-        m_overlappedActors.Remove(other.gameObject);
+        switch(m_playerState)
+        {
+            case ENUM_PlayerStates.interacting:
+                if( other.gameObject == m_climbedObject)
+                    m_overlappedActors.Remove(other.gameObject);
+            break;
+            case ENUM_PlayerStates.climbing:
+                if( other.gameObject == m_draggedObject)
+                    m_overlappedActors.Remove(other.gameObject);
+            break;
+            default:
+            break;
+        }
     }
 
     public void Respawn()
@@ -435,8 +416,6 @@ public class Player_Proto_001 : MonoBehaviour
 
     private void Spawn()
     {
-        if ((m_playerState == ENUM_PlayerStates.interacting) && m_draggableObjects[0] != null)
-            m_draggableObjects[0].transform.SetParent(null);
         Initialization();
         this.transform.position = m_spawnPosition;
         this.transform.rotation = m_spawnRotation;

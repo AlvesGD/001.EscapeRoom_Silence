@@ -11,6 +11,7 @@ public class PLAY_LookAround : MonoBehaviour
     }
 
     [SerializeField] private ENUM_RotationAxis m_rotAxis;
+    [SerializeField] private float m_Xclamp;
     [SerializeField] private float m_sensitivity;
     [SerializeField] private bool m_smooth;
     private bool[] m_blockedAxis = new bool[(int)ENUM_RotationAxis.NB_AXIS]; //Should an axis be blocked ?
@@ -40,18 +41,22 @@ public class PLAY_LookAround : MonoBehaviour
         switch(m_rotAxis)
         {
             case ENUM_RotationAxis.X:
-                if(Mathf.Abs(Input.GetAxis("Y")) > 0.05f)//Precision (Point mort)
+                if(Mathf.Abs(Input.GetAxis("Y")) > 0.1f)//Precision (Point mort)
                 {
                     if (!m_blockedAxis[(int)ENUM_RotationAxis.X])    //If the axis is not being blocked
                         this.transform.Rotate(Input.GetAxis("Y") * m_sensitivity * (-1.0f), 0.0f, 0.0f);
                     
-                    //Clamp not working
-                    /*
-                    if (this.transform.eulerAngles.x < 45f)
-                        this.transform.localEulerAngles = new Vector3(45f, 0, 0);
-                    if (this.transform.eulerAngles.x > -45f)
-                        this.transform.localEulerAngles = new Vector3(-45f, 0, 0);
-                    */
+                    if(m_Xclamp != 0.0f)
+                    {
+                        if (this.transform.eulerAngles.x > 45f && this.transform.eulerAngles.x < 180f)
+                        {
+                            this.transform.eulerAngles = new Vector3(45f, this.transform.eulerAngles.y, this.transform.eulerAngles.z);
+                        }
+                        if(this.transform.eulerAngles.x < 315f && this.transform.eulerAngles.x > 180f)
+                        {
+                            this.transform.eulerAngles = new Vector3(315f, this.transform.eulerAngles.y, this.transform.eulerAngles.z);
+                        }
+                    }
                 }
                 break;
             case ENUM_RotationAxis.Y:

@@ -2,13 +2,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class ACT_Draggable_Proto_001 : MonoBehaviour
+public class Interactable : MonoBehaviour
 {
 
     //References
     [SerializeField] private Player_Proto_001 m_playerRef;
     //Properties
-    private bool mB_dragged;
+    private bool mB_beingUsed;
     [SerializeField] private float mFlt_noiseImpact;
     [SerializeField] private float mFlt_speedImpact;
     [SerializeField] private bool mB_blockZMovement;
@@ -22,18 +22,18 @@ public class ACT_Draggable_Proto_001 : MonoBehaviour
         mV_savedPosition = this.transform.position;
     }
 
-    public void Drag(Player_Proto_001 player)
+    public void Interact(Player_Proto_001 player)
     {
-        mB_dragged = true;
+        mB_beingUsed = true;
         this.GetComponent<BoxCollider>().enabled = false;
         this.transform.SetParent(player.transform);
         // this.transform.position = mV_savedPosition;
         //this.GetComponent<FixedJoint>().connectedBody = player.GetComponent<Rigidbody>();
     }
 
-    public void Drop(Player_Proto_001 player)
+    public void Release(Player_Proto_001 player)
     {
-        mB_dragged = false;
+        mB_beingUsed = false;
         this.transform.parent = null;
         this.GetComponent<BoxCollider>().enabled = true;
         //this.GetComponent<FixedJoint>().connectedBody = null;
@@ -78,7 +78,7 @@ public class ACT_Draggable_Proto_001 : MonoBehaviour
 
     public bool IsDragged()
     {
-        return mB_dragged;
+        return mB_beingUsed;
     }
 
     public bool X_Blocked()
