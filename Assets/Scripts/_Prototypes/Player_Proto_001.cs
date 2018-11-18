@@ -133,7 +133,7 @@ public class Player_Proto_001 : MonoBehaviour
                     m_aimedObject = hit.collider.gameObject.transform;
                     if(ObjectOverlapped(m_aimedObject.gameObject))
                     {
-                        if(FirstObjInOverlapped(ENUM_Object.climbable))
+                        if(FirstObjInOverlapped(ENUM_Object.climbable) != null)
                         {
                             m_climbedObject = m_aimedObject.GetComponent<Climbable>();
                             m_hintParentRef.gameObject.SetActive(true);
@@ -147,7 +147,7 @@ public class Player_Proto_001 : MonoBehaviour
                                 m_hintParentRef.GetChild(0).GetChild(1).gameObject.SetActive(false);
                             m_climbedObject = null;
                         }
-                        if(FirstObjInOverlapped(ENUM_Object.draggable))
+                        if(FirstObjInOverlapped(ENUM_Object.draggable) != null)
                         {
                             m_hintParentRef.gameObject.SetActive(true);
                             m_draggedObject = m_aimedObject.GetComponent<Draggable>();
@@ -199,6 +199,16 @@ public class Player_Proto_001 : MonoBehaviour
             UpdateCurrentSpeed();
         }
     }
+    
+    //If any absolute input is positive, then m_currentSpeed is defined as the most important absolute input, otherwise m_currentSpeed is set to 0
+    private void UpdateCurrentSpeed()
+    {
+        //FIX ME : If the player is blocked by the object he's dragging (X blocked for example) he mustn't generate useless noise
+        if (Mathf.Abs(Input.GetAxis("Horizontal")) > 0.0f || Mathf.Abs(Input.GetAxis("Vertical")) > 0.0f)
+            m_currentSpeed = (Mathf.Abs(Input.GetAxis("Horizontal")) > Mathf.Abs(Input.GetAxis("Vertical"))) ? Mathf.Abs(Input.GetAxis("Horizontal")) : Mathf.Abs(Input.GetAxis("Vertical"));
+        else
+            m_currentSpeed = 0.0f;
+    }
 
     private void Action()
     {
@@ -207,7 +217,7 @@ public class Player_Proto_001 : MonoBehaviour
             if (m_draggedObject != null && m_playerState == ENUM_PlayerStates.none)
             {
                 m_playerState = ENUM_PlayerStates.interacting;
-                m_draggedObject.Interact(this.GetComponent<Player_Proto_001>());//Drags the object
+                m_draggedObject.Interact();//Drags the object
                 if(m_lookAroundRef != null && m_camLookAroundRef != null) //Blocks the looking axis rotations
                 {
                     m_lookAroundRef.BlockAxis(PLAY_LookAround.ENUM_RotationAxis.Y);
@@ -220,32 +230,39 @@ public class Player_Proto_001 : MonoBehaviour
             {
                 if(m_climbedObject != null)
                 {
-                    if (m_playerState == ENUM_PlayerStates.none)
+                    if (m_playerState == ENUM_PlayerStates.none)//If the climbing phase has just started.
                     {
                         m_playerState = ENUM_PlayerStates.climbing;
                         mB_blocked = true;
-                        
                         this.GetComponent<Rigidbody>().useGravity = false;
                         m_playerStartClimbingPos = this.transform.position;
+                        m_climbedObject.Interact();
                     }
-                    if(this.transform.position.y > m_climbedObject.transform.GetChild(0).position.y + this.GetComponent<CapsuleCollider>().height / 2)//Player has climbed the object
+                    if(m_playerState == ENUM_PlayerStates.climbing)
                     {
-                        m_playerState = ENUM_PlayerStates.none;
-                        mB_blocked = false;
-                        this.GetComponent<Rigidbody>().useGravity = true;
-                        m_climbedObject = null;
-                    }else//IF the object has not just been already climbed, it avoids to chain the climbs between different climbable objects
-                    {
-                        float input = Input.GetAxis("Gamepad_Trigger");
-                        float speed = Vector3.Distance(m_playerStartClimbingPos, m_climbedObject.transform.GetChild(0).position) / m_climbedObject.GetClimbDuration();
-                    
-                        this.transform.position += new Vector3(0, input*speed, 0);
+                        //If the player hasn't climbed the summit of the object.
+                        if(this.transform.position.y < m_climbedObject.transform.GetChild(0).position.y + this.GetComponent<CapsuleCollider>().height / 2)
+                        {
+                            float input = Input.GetAxis("Gamepad_Trigger");
+                            float speed = Vector3.Distance(m_playerStartClimbingPos, m_climbedObject.transform.GetChild(0).position) / (m_climbedObject.GetClimbDuration() * 100);
+                        
+                            this.transform.position += new Vector3(0, input*speed, 0);
+                        }else
+                        {
+                            m_playerState = ENUM_PlayerStates.none;
+                            mB_blocked = false;
+                            m_climbedObject.Release();
+                            this.GetComponent<Rigidbody>().useGravity = true;
+                            m_overlappedActors.Remove(m_climbedObject.gameObject);
+                            m_climbedObject = null;
+                        }
                     }
                 }
                 //If he is currently overlapping climbable object and not already performing an action
             }else if(m_playerState == ENUM_PlayerStates.climbing)
             {
                 m_playerState = ENUM_PlayerStates.none;
+                m_climbedObject.Release();
                 mB_blocked = false;
                 this.transform.position = m_playerStartClimbingPos;
                 this.GetComponent<Rigidbody>().useGravity = true;
@@ -253,7 +270,7 @@ public class Player_Proto_001 : MonoBehaviour
             if (m_playerState == ENUM_PlayerStates.interacting)//Already dragging an object
             {
                 m_playerState = ENUM_PlayerStates.none;
-                m_draggedObject.Release(this);//Drops the object
+                m_draggedObject.Release();//Drops the object
                 if (m_lookAroundRef != null && m_camLookAroundRef != null)//Frees looking axis rotations
                 {
                     m_lookAroundRef.FreeAxis(PLAY_LookAround.ENUM_RotationAxis.Y);
@@ -264,27 +281,22 @@ public class Player_Proto_001 : MonoBehaviour
         }
     }
 
-    //If any absolute input is positive, then m_currentSpeed is defined as the most important absolute input, otherwise m_currentSpeed is set to 0
-    private void UpdateCurrentSpeed()
-    {
-        //FIX ME : If the player is blocked by the object he's dragging (X blocked for example) he mustn't generate useless noise
-        if (Mathf.Abs(Input.GetAxis("Horizontal")) > 0.0f || Mathf.Abs(Input.GetAxis("Vertical")) > 0.0f)
-            m_currentSpeed = (Mathf.Abs(Input.GetAxis("Horizontal")) > Mathf.Abs(Input.GetAxis("Vertical"))) ? Mathf.Abs(Input.GetAxis("Horizontal")) : Mathf.Abs(Input.GetAxis("Vertical"));
-        else
-            m_currentSpeed = 0.0f;
-    }
-
     private void UpdateNoiseLevel()
     {
         if(!mB_blocked)
         {
             if (m_currentSpeed > 0.0f /*&& mB_isGrounded*/)
             {
-                m_noiseLevel = m_currentSpeed * (m_spdNoiseImpact + ((m_playerState == ENUM_PlayerStates.interacting) ? m_draggedObject.GetNoiseImpact() : 0.0f));
-                
+                m_noiseLevel = m_currentSpeed * (m_spdNoiseImpact + ((m_playerState == ENUM_PlayerStates.interacting) ? m_draggedObject.GetNoiseImpact() : 0.0f));   
             }
             else
                 m_noiseLevel = 0.0f;
+        }else
+        {
+            if(m_playerState == ENUM_PlayerStates.climbing)
+            {
+                m_noiseLevel = m_climbedObject.GetNoiseImpact() * Input.GetAxis("Gamepad_Trigger");
+            }
         }
         //Keeps m_noiseLevel between 0 and 1
         m_noiseLevel = Mathf.Clamp(m_noiseLevel, 0.0f, 1.0f);
@@ -295,55 +307,6 @@ public class Player_Proto_001 : MonoBehaviour
             m_gmRef.Restart();
         }
         */
-        switch(m_playerState)
-        {
-            case ENUM_PlayerStates.interacting:
-                if (m_currentSpeed > 0.0f)
-                {
-                    m_draggedObject.GetComponent<AudioSource>().volume = m_noiseLevel;
-                    if (!m_draggedObject.GetComponent<AudioSource>().isPlaying)
-                    {
-                        m_draggedObject.GetComponent<AudioSource>().Play();
-                    }
-                    if (m_currentSpeed > 0.5f)
-                    {
-                        if (!m_draggedObject.GetComponents<AudioSource>()[1].isPlaying)
-                        {
-                            m_draggedObject.GetComponents<AudioSource>()[1].Play();
-                        }
-                    }else
-                    {
-                        m_draggedObject.GetComponents<AudioSource>()[1].Pause();
-                    }
-                }
-                else
-                {
-                    if (m_draggedObject.GetComponent<AudioSource>().isPlaying)
-                    {
-                        m_draggedObject.GetComponent<AudioSource>().Stop();
-                    }
-                    if (m_draggedObject.GetComponents<AudioSource>()[1].isPlaying)
-                    {
-                        m_draggedObject.GetComponents<AudioSource>()[1].Stop();
-                    }
-
-                }
-            break;
-            case ENUM_PlayerStates.climbing:
-            m_noiseLevel = Input.GetAxis("Gamepad_Trigger") * m_climbedObject.GetNoiseImpact();
-            if (m_draggedObject != null)
-            {
-                if (m_draggedObject.GetComponent<AudioSource>().isPlaying)
-                {
-                    m_draggedObject.GetComponent<AudioSource>().Stop();
-                }
-                if (m_draggedObject.GetComponents<AudioSource>()[1].isPlaying)
-                {
-                    m_draggedObject.GetComponents<AudioSource>()[1].Stop();
-                }
-            }
-            break;
-        }
         if (mImg_noiseLevelBar != null && m_noiseLvlBcgRef != null)
         {
             mImg_noiseLevelBar.fillAmount = m_noiseLevel;
@@ -353,6 +316,7 @@ public class Player_Proto_001 : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
+        //Landing
     }
 
     private bool ObjectOverlapped(GameObject tObject)
@@ -397,14 +361,16 @@ public class Player_Proto_001 : MonoBehaviour
         switch(m_playerState)
         {
             case ENUM_PlayerStates.interacting:
-                if( other.gameObject == m_climbedObject)
+                if( other.gameObject == m_climbedObject && ObjectOverlapped(other.gameObject))
                     m_overlappedActors.Remove(other.gameObject);
             break;
             case ENUM_PlayerStates.climbing:
-                if( other.gameObject == m_draggedObject)
+                if( other.gameObject == m_draggedObject && ObjectOverlapped(other.gameObject))
                     m_overlappedActors.Remove(other.gameObject);
             break;
             default:
+                    m_overlappedActors.Remove(other.gameObject);
+
             break;
         }
     }
@@ -419,5 +385,10 @@ public class Player_Proto_001 : MonoBehaviour
         Initialization();
         this.transform.position = m_spawnPosition;
         this.transform.rotation = m_spawnRotation;
+    }
+
+    public float InputTriggerIntens()
+    {
+        return Input.GetAxis("Gamepad_Trigger");
     }
 }

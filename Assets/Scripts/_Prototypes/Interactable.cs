@@ -2,78 +2,123 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(AudioPlayer))]
 public class Interactable : MonoBehaviour
 {
 
-    //References
-    [SerializeField] private Player_Proto_001 m_playerRef;
-    //Properties
+        //REFERENCES
+    [SerializeField] protected Player_Proto_001 m_playerRef;
+    private AudioPlayer m_audioPlayer;
+        //PROPERTIES
     private bool mB_beingUsed;
+    private float m_usedIntensity;
+    private List<AudioSource> m_audioSources;
+    
+        //CUSTOM
+    [SerializeField] private bool mB_singleShot;
     [SerializeField] private float mFlt_noiseImpact;
-    [SerializeField] private float mFlt_speedImpact;
+    
     [SerializeField] private bool mB_blockZMovement;
     [SerializeField] private bool mB_blockYMovement;
     [SerializeField] private bool mB_blockXMovement;
-    private Vector3 mV_savedPosition;
 
+    [SerializeField] private List<AudioClip> m_audioSamples;
 	// Use this for initialization
-	void Start ()
+	private void Start()
     {
-        mV_savedPosition = this.transform.position;
+        Initialization();
     }
 
-    public void Interact(Player_Proto_001 player)
+    private void Initialization()
     {
-        mB_beingUsed = true;
-        this.GetComponent<BoxCollider>().enabled = false;
-        this.transform.SetParent(player.transform);
-        // this.transform.position = mV_savedPosition;
-        //this.GetComponent<FixedJoint>().connectedBody = player.GetComponent<Rigidbody>();
-    }
-
-    public void Release(Player_Proto_001 player)
-    {
+        m_audioSources = new List<AudioSource>(this.GetComponents<AudioSource>());//Getting the audio sources attached to this gameObject.
+        m_audioPlayer = this.GetComponent<AudioPlayer>();//Referencing the audio player attached to this gameObject.
         mB_beingUsed = false;
-        this.transform.parent = null;
-        this.GetComponent<BoxCollider>().enabled = true;
-        //this.GetComponent<FixedJoint>().connectedBody = null;
     }
 
-    private void OnTriggerEnter(Collider other)
+    private void Update()
     {
-        /*/
-        if (other.CompareTag("Player"))
-        {
-            MeshRenderer rend = this.GetComponent<MeshRenderer>();
-
-            rend.material.SetColor("_Color", Color.red);
-        }
-        */
+        NoiseGeneration();//Calls the function responsible for the noise generation.
     }
 
-    private void OnTriggerExit(Collider other)
+    private void NoiseGeneration()
     {
-        /*
-        if (other.CompareTag("Player"))
-        {
-            MeshRenderer rend = this.GetComponent<MeshRenderer>();
+        m_usedIntensity = m_playerRef.InputTriggerIntens();
 
-            rend.material.SetColor("_Color", Color.white);
+        if(!mB_singleShot)//If this object has not a single shot interaction.
+        {
+            if(mB_beingUsed)//And is currently being used.
+            {
+                if(Mathf.Abs(m_usedIntensity) > 0f)//Checking the input intensity of the player and playing the right sounds.
+                    m_audioPlayer.TryPlaySound(m_audioSources[0], m_audioSamples[0]);//Light sound
+                else
+                    StopSourceAtIndex(new int[] {0, 1, 2});
+
+                if(m_usedIntensity >= 0.33f)
+                    m_audioPlayer.TryPlaySound(m_audioSources[1], m_audioSamples[1]);//Mid sound
+                else
+                    StopSourceAtIndex(new int[] {1, 2});
+
+                if(m_usedIntensity >= 0.66f && m_usedIntensity < 1f)
+                    m_audioPlayer.TryPlaySound(m_audioSources[2], m_audioSamples[2]);//Heavy sound
+                else
+                    StopSourceAtIndex(new int[] {2});
+            }//Otherwise if an audio source is still playing, it will stop.
+            else
+            {
+                if(m_audioSources[0].isPlaying || m_audioSources[1].isPlaying || m_audioSources[2].isPlaying)
+                {
+                    StopSourceAtIndex(new int[] {0, 1, 2});
+                }
+            }
         }
-        */
     }
 
-    //ACCESSORS
+    //Stop the source indicated by the indexes in the audio sources list.
+    private void StopSourceAtIndex(int[] indexes)
+    {
+        for(int i = 0 ; i < indexes.Length ; i++)
+        {
+            m_audioPlayer.StartFadeSource(m_audioSources[indexes[i]], 0.3f);
+        }
+    }
+
+    public virtual void Interact()
+    {
+        Interactable[] temp = this.GetComponents<Interactable>();
+        for(int i = 0 ; i < temp.Length ; i++)
+        {
+            if(temp[i] != this)
+            {
+                temp[i].enabled = false;
+            }
+        }
+
+        mB_beingUsed = true;
+        //Other interactions functions
+        if(mB_singleShot)//If the object has a singleshot interaction and doesn't need an input sensitivity, it turns off.
+            mB_beingUsed = false;
+    }
+
+    public virtual void Release()
+    {
+        Interactable[] temp = this.GetComponents<Interactable>();
+        for(int i = 0 ; i < temp.Length ; i++)
+        {
+            if(temp[i] != this)
+            {
+                temp[i].enabled = true;
+            }
+        }
+        mB_beingUsed = false;
+        m_usedIntensity = 0;
+    }
     
-
+        //ACCESSORS
+    
     public float GetNoiseImpact()
     {
         return mFlt_noiseImpact;
-    }
-
-    public float GetSpeedImpact()
-    {
-        return mFlt_speedImpact;
     }
 
     public bool IsDragged()
@@ -94,5 +139,11 @@ public class Interactable : MonoBehaviour
     public bool Z_Blocked()
     {
         return mB_blockZMovement;
+    }
+
+        //MUTATORS
+    public void SetUsedIntensity(float intensity)
+    {
+        m_usedIntensity = intensity;
     }
 }
